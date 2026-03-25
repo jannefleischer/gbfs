@@ -67,8 +67,17 @@ get_which_gbfs_feeds <- function(city, token = NULL, token_url = NULL, client_id
   gbfs <- tryCatch(gbfs_fetch_json(url, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE),
                    error = report_connection_issue)
   
-  # pull out the dataset
-  gbfs_feeds <- gbfs[["data"]][[1]][[1]]
+  # defensive extraction of feeds
+  if (!is.null(gbfs$data$feeds)) {
+    raw_feeds <- gbfs$data$feeds
+  } else if (length(gbfs[["data"]]) >= 1) {
+    raw_feeds <- gbfs[["data"]][[1]]
+  } else {
+    stop("Unexpected GBFS response structure")
+  }
+
+  # convert list-of-objects to tibble with columns 'name' and 'url'
+  gbfs_feeds <- purrr::map_df(raw_feeds, ~ as.data.frame(.x, stringsAsFactors = FALSE))
     
   # ...and return it!
   return(gbfs_feeds)
