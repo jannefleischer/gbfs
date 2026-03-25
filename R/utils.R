@@ -154,11 +154,21 @@ find_feed_from_top_level <- function(top_level_, feed_, token = NULL, token_url 
   }
   
   # grab the gbfs.json feed
-  gbfs <- tryCatch(gbfs_fetch_json(top_level_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope),
+  gbfs <- tryCatch(gbfs_fetch_json(top_level_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE),
                    error = report_connection_issue)
   
   # pull out the names of the supplied sub-feeds
-  gbfs_feeds <- gbfs$data[[1]]$feeds
+  # GBFS v3: data$feeds directly
+  # GBFS v1/v2: data$<language>$feeds (nested by language)
+  if (!is.null(gbfs$data$feeds) && is.data.frame(gbfs$data$feeds)) {
+    gbfs_feeds <- gbfs$data$feeds
+  } else if (length(gbfs[["data"]]) >= 1 && !is.null(gbfs[["data"]][[1]]$feeds)) {
+    gbfs_feeds <- gbfs[["data"]][[1]]$feeds
+  } else {
+    stop(sprintf(c("The supplied \"city\" argument looks like the top-level ",
+                   "\"gbfs.json\" URL, but no sub-feeds could be parsed from it. ",
+                   "Please check the URL or supply the actual feed URL directly.")))
+  }
   
   # if the sub-feed is provided by the program, return its URL
   if (feed_ %in% gbfs_feeds$name) {
@@ -497,6 +507,45 @@ url_exists <- function(x, quiet = FALSE, ...) {
   
   return(TRUE)
   
+}
+
+#' Flatten list-columns in a data.frame by collapsing each list element to a
+#' single string. Robust to cases where the "is list" test may return a list
+#' (coerce to logical safely).
+#'
+#' @param df A data.frame possibly containing list-columns.
+#' @return A data.frame with list-columns collapsed to character columns.
+#' @export
+flatten_list_columns <- function(df) {
+  if (!is.data.frame(df)) return(df)
+
+  # determine which columns are list-like (safe logical vector)
+  is_list_col <- vapply(df, function(col) {
+    is.list(col) || any(vapply(col, is.list, logical(1)), na.rm = TRUE)
+  }, logical(1))
+
+  if (!any(is_list_col)) return(df)
+
+  new_cols <- lapply(names(df)[is_list_col], function(col) {
+    vec <- df[[col]]
+    sapply(vec, function(x) {
+      if (is.null(x)) return(NA_character_)
+      if (length(x) == 0) return("")
+      if (is.list(x)) {
+        flat <- tryCatch(unlist(x), error = function(e) x)
+        paste(as.character(flat), collapse = ",")
+      } else {
+        paste(as.character(x), collapse = ",")
+      }
+    }, USE.NAMES = FALSE)
+  })
+
+  names(new_cols) <- names(df)[is_list_col]
+
+  # drop original list-columns and bind the flattened columns
+  df_out <- df[ , !is_list_col, drop = FALSE]
+  df_out <- cbind(df_out, as.data.frame(new_cols, stringsAsFactors = FALSE, check.names = FALSE))
+  df_out
 }
 
 # a function to alert the user of no internet connection in a
