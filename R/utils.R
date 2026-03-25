@@ -41,7 +41,7 @@ check_return_arguments <- function(directory_, file_, output_) {
 
 # this function checks the `city` argument, and converts the names of
 # cities to their appropriate URL
-city_to_url <- function(city_, feed_) {
+city_to_url <- function(city_, feed_, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
   
   # first, check if the city argument is the desired feed. if so, return it!
   if (stringr::str_detect(city_, paste0(feed_, ".json"))) {
@@ -59,7 +59,7 @@ city_to_url <- function(city_, feed_) {
     
     if (feed_ != "gbfs") {
       # try to construct the link from the top-level one
-      city_ <- find_feed_from_top_level(city_, feed_)
+      city_ <- find_feed_from_top_level(city_, feed_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope)
     }
     
     return(city_)
@@ -123,7 +123,7 @@ find_feed_from_index <- function(index_, cities_, feed_) {
     if (feed_ == "gbfs") {
       return(dplyr::pull(url))
     } else {
-      return(find_feed_from_top_level(dplyr::pull(url), feed_))
+      return(find_feed_from_top_level(dplyr::pull(url), feed_, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL))
     }
   }
   
@@ -139,7 +139,7 @@ find_feed_from_index <- function(index_, cities_, feed_) {
   
 # a function that takes in a top-level gbfs.json URL, the name of the desired 
 # feed and tries to find the desired feed stored inside of it
-find_feed_from_top_level <- function(top_level_, feed_) {
+find_feed_from_top_level <- function(top_level_, feed_, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
   
   # if the supplied feed is the top-level feed, then just return it
   if (feed_ == "gbfs" & url_exists(top_level_)) {
@@ -147,7 +147,7 @@ find_feed_from_top_level <- function(top_level_, feed_) {
   }
   
   # grab the gbfs.json feed
-  gbfs <- tryCatch(jsonlite::fromJSON(txt = top_level_),
+  gbfs <- tryCatch(gbfs_fetch_json(top_level_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope),
                    error = report_connection_issue)
   
   # pull out the names of the supplied sub-feeds
@@ -199,7 +199,7 @@ determine_output_types <- function(directory_, output_) {
 }
 
 # a function that grabs a gbfs formatted dataset
-get_gbfs_dataset_ <- function(city, directory, file, output, feed) {
+get_gbfs_dataset_ <- function(city, directory, file, output, feed, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
   
   # test internet connection
   if (!connected_to_internet()) {
@@ -212,11 +212,10 @@ get_gbfs_dataset_ <- function(city, directory, file, output, feed) {
                          output_ = output) 
   
   # find the appropriate url for the feed
-  url <- city_to_url(city, 
-                     feed)
+  url <- city_to_url(city, feed, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope)
   
   # save feed
-  data_raw <- tryCatch(jsonlite::fromJSON(txt = url),
+  data_raw <- tryCatch(gbfs_fetch_json(url, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE),
                        error = report_connection_issue)
   
   data <- data_raw[["data"]]
@@ -457,6 +456,41 @@ report_connection_issue <- function(e) {
   return(list())
 }
 
+# Fetch JSON with optional OAuth2 client_credentials support.
+# If `token` is NULL and client credentials are supplied, obtain a token via `get_gbfs_token()`.
+gbfs_fetch_json <- function(url, token = NULL, token_url = NULL,
+                            client_id = NULL, client_secret = NULL, scope = NULL,
+                            simplifyVector = TRUE) {
+  # If no explicit token provided, prefer stored token in gbfs_token_env
+  if (is.null(token) && exists("gbfs_token_env", inherits = TRUE)) {
+    env <- get("gbfs_token_env", inherits = TRUE)
+    if (!is.null(env$token) && !is.null(env$expires_at) && Sys.time() < env$expires_at) {
+      token <- env$token
+    }
+    # if still no token, but stored client creds exist, use those
+    if (is.null(token) && is.null(client_id) && !is.null(env$client_id)) client_id <- env$client_id
+    if (is.null(token) && is.null(client_secret) && !is.null(env$client_secret)) client_secret <- env$client_secret
+    if (is.null(token) && is.null(token_url) && !is.null(env$token_url)) token_url <- env$token_url
+    if (is.null(token) && is.null(scope) && !is.null(env$scope)) scope <- env$scope
+  }
+
+  if (is.null(token) && !is.null(client_id) && !is.null(client_secret) && !is.null(token_url)) {
+    token <- get_gbfs_token(token_url = token_url,
+                            client_id = client_id,
+                            client_secret = client_secret,
+                            scope = scope)
+  }
+
+  if (!is.null(token)) {
+    resp <- httr::GET(url, httr::add_headers(Authorization = paste("Bearer", token)))
+    httr::stop_for_status(resp)
+    txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+    jsonlite::fromJSON(txt = txt, simplifyVector = simplifyVector)
+  } else {
+    jsonlite::fromJSON(txt = url, simplifyVector = simplifyVector)
+  }
+}
+
 # a wrapper around has internet so that with_mock can be used in tests
 connected_to_internet <- function() {
   curl::has_internet()
@@ -613,7 +647,7 @@ geofencing_zones_to_sf <- function(geofencing_json, crs = 4326) {
 }
 
 # Fetch, parse, and return the geofencing_zones feed as an sf object.
-get_geofencing_zones_ <- function(city, directory, file, output) {
+get_geofencing_zones_ <- function(city, directory, file, output, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
   if (!connected_to_internet()) return(message_no_internet())
 
   if (!requireNamespace("sf", quietly = TRUE)) {
@@ -623,12 +657,12 @@ get_geofencing_zones_ <- function(city, directory, file, output) {
 
   check_return_arguments(directory_ = directory, file_ = file, output_ = output)
 
-  url <- city_to_url(city, "geofencing_zones")
+  url <- city_to_url(city, "geofencing_zones", token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope)
 
   # Use simplifyVector = FALSE so that polygon coordinate arrays stay as
   # nested lists rather than being flattened into matrices/vectors.
   data_raw <- tryCatch(
-    jsonlite::fromJSON(txt = url, simplifyVector = FALSE),
+    gbfs_fetch_json(url, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = FALSE),
     error = report_connection_issue
   )
 

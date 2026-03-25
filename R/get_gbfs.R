@@ -53,7 +53,7 @@ get_gbfs_cities <- function() {
 #' \donttest{get_which_gbfs_feeds(city = "biketown_pdx")}
 #' 
 #' @export
-get_which_gbfs_feeds <- function(city) {
+get_which_gbfs_feeds <- function(city, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
     
   # test internet connection
   if (!connected_to_internet()) {
@@ -61,10 +61,10 @@ get_which_gbfs_feeds <- function(city) {
   }
   
   # convert the city argument to a URL
-  url <- city_to_url(city, "gbfs")
+  url <- city_to_url(city, "gbfs", token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope)
     
   # grab the relevant data
-  gbfs <- tryCatch(jsonlite::fromJSON(txt = url),
+  gbfs <- tryCatch(gbfs_fetch_json(url, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE),
                    error = report_connection_issue)
   
   # pull out the dataset
@@ -123,7 +123,7 @@ get_which_gbfs_feeds <- function(city) {
 #' # if, instead, we just wanted the dynamic feeds
 #' \donttest{get_gbfs(city = "biketown_pdx", feeds = "dynamic")}
 #' @export
-get_gbfs <- function(city, feeds = "all", directory = NULL, output = NULL) {
+get_gbfs <- function(city, feeds = "all", directory = NULL, output = NULL, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
 
   # test internet connection
   if (!connected_to_internet()) {
@@ -147,10 +147,10 @@ get_gbfs <- function(city, feeds = "all", directory = NULL, output = NULL) {
   }
   
   # convert the city argument to a top-level gbfs url
-  url <- city_to_url(city, "gbfs")
+  url <- city_to_url(city, "gbfs", token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope)
   
   # figure out which feeds are available
-  available_feeds <- get_which_gbfs_feeds(city = url)
+  available_feeds <- get_which_gbfs_feeds(city = url, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope)
 
   # ...and then figure out which of them to grab
   relevant_feeds <- available_feeds %>%
@@ -168,7 +168,12 @@ get_gbfs <- function(city, feeds = "all", directory = NULL, output = NULL) {
                 get_gbfs_dataset_,
                 city = url,
                 directory = directory,
-                output = NULL)
+                output = NULL,
+                token = token,
+                token_url = token_url,
+                client_id = client_id,
+                client_secret = client_secret,
+                scope = scope)
     )
 
   # name each of the elements so that they're more easily accessible
