@@ -3,8 +3,17 @@
 
 gbfs_token_env <- new.env(parent = emptyenv())
 
-# Set global auth values for the package. Call this once to avoid
-# passing credentials repeatedly to functions.
+#' Set GBFS authentication credentials for the session
+#'
+#' Store OAuth2 client credentials or an access token in the package
+#' environment so user-facing functions will reuse them automatically.
+#'
+#' @param token Optional raw access token.
+#' @param token_url Token endpoint URL for client_credentials flow.
+#' @param client_id OAuth2 client id.
+#' @param client_secret OAuth2 client secret.
+#' @param scope Optional scope string.
+#' @export
 set_gbfs_auth <- function(token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
   if (!is.null(token)) {
     gbfs_token_env$token <- token
@@ -18,13 +27,30 @@ set_gbfs_auth <- function(token = NULL, token_url = NULL, client_id = NULL, clie
   invisible(TRUE)
 }
 
+#' Clear GBFS authentication stored in the session
+#'
+#' Remove any stored token or client credentials previously set with
+#' `set_gbfs_auth()`.
+#'
+#' @export
 clear_gbfs_auth <- function() {
   rm(list = ls(envir = gbfs_token_env), envir = gbfs_token_env)
   invisible(TRUE)
 }
 
-# Obtain an access token. If arguments are NULL, try to read stored
-# credentials from `gbfs_token_env` (set via `set_gbfs_auth`).
+#' Obtain an OAuth2 access token (client_credentials)
+#'
+#' Requests and caches an access token using the OAuth2 client_credentials
+#' flow. If `token_url`, `client_id`, or `client_secret` are omitted this
+#' function will try to read stored values set via `set_gbfs_auth()`.
+#'
+#' @param token_url Token endpoint URL.
+#' @param client_id OAuth2 client id.
+#' @param client_secret OAuth2 client secret.
+#' @param scope Optional scope string.
+#' @param force If TRUE, force re-requesting a token even if a cached one exists.
+#' @return Access token string.
+#' @export
 get_gbfs_token <- function(token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL, force = FALSE) {
   if (!is.null(gbfs_token_env$token) && !force) {
     if (!is.null(gbfs_token_env$expires_at) && Sys.time() < gbfs_token_env$expires_at) {
