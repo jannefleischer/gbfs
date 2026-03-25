@@ -76,10 +76,32 @@ get_which_gbfs_feeds <- function(city, token = NULL, token_url = NULL, client_id
     stop("Unexpected GBFS response structure")
   }
 
-  # convert list-of-objects to tibble with columns 'name' and 'url'
-  gbfs_feeds <- purrr::map_df(raw_feeds, ~ as.data.frame(.x, stringsAsFactors = FALSE))
-    
-  # ...and return it!
+  # normalize to tibble with columns 'name' and 'url'
+  if (is.data.frame(raw_feeds)) {
+    gbfs_feeds <- tibble::as_tibble(raw_feeds)
+  } else if (is.character(raw_feeds)) {
+    # vector of feed names or URLs
+    # assume names if values look like simple feed ids, otherwise treat as urls
+    if (all(grepl("^[a-z0-9_]+$", raw_feeds, ignore.case = TRUE))) {
+      gbfs_feeds <- tibble::tibble(name = raw_feeds)
+    } else {
+      gbfs_feeds <- tibble::tibble(url = raw_feeds)
+      gbfs_feeds <- gbfs_feeds %>% dplyr::mutate(name = basename(url) %>% sub("\\.json$|\\.gbfs$","",.))
+    }
+  } else if (is.list(raw_feeds)) {
+    gbfs_feeds <- tibble::tibble(
+      name = purrr::map_chr(raw_feeds, "name", .default = NA_character_),
+      url  = purrr::map_chr(raw_feeds, "url",  .default = NA_character_)
+    )
+  } else {
+    stop("Unhandled feeds format from GBFS response")
+  }
+
+  # ensure a `name` column exists for downstream joins
+  if (!"name" %in% colnames(gbfs_feeds)) {
+    stop("Could not determine feed 'name' from GBFS response. Debug: str(gbfs_feeds)")
+  }
+
   return(gbfs_feeds)
     
 }
