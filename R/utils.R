@@ -174,6 +174,56 @@ find_feed_from_top_level <- function(top_level_, feed_, token = NULL, token_url 
                    "city as a string.")))
   }
 }
+
+#' Extract GBFS feed URL from Mobilodrom manifest/system JSON
+#'
+#' Mobilodrom exposes manifests like `manifest.json` or `system.json` that
+#' list available GBFS feeds. This helper fetches the manifest (using the
+#' package fetcher so stored auth is applied) and returns the first
+#' available `gbfs.json` URL.
+#'
+#' @param mobilodrom_url URL to the Mobilodrom manifest or system JSON (or a
+#'   URL that returns one of those documents).
+#' @param token Optional access token (overrides stored package auth).
+#' @param token_url Optional token endpoint for client_credentials flow.
+#' @param client_id Optional OAuth2 client id.
+#' @param client_secret Optional OAuth2 client secret.
+#' @param scope Optional OAuth2 scope.
+#' @return Character vector of length 1 with the discovered `gbfs.json` URL.
+#' @export
+get_city_url_from_mobilodrom <- function(mobilodrom_url, token = NULL, token_url = NULL, client_id = NULL, client_secret = NULL, scope = NULL) {
+  if (!connected_to_internet()) return(message_no_internet())
+
+  # try to fetch the provided URL
+  res <- tryCatch(
+    gbfs_fetch_json(mobilodrom_url, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = FALSE),
+    error = function(e) {
+      stop(sprintf("Could not fetch mobilodrom manifest at %s: %s", mobilodrom_url, as.character(e)))
+    }
+  )
+
+  # manifest.json style: res$data$datasets[[i]]$versions[[j]]$url
+  if (!is.null(res$data) && !is.null(res$data$datasets)) {
+    datasets <- res$data$datasets
+    for (ds in datasets) {
+      if (!is.null(ds$versions) && length(ds$versions) > 0) {
+        for (v in ds$versions) {
+          if (!is.null(v$url)) return(v$url)
+        }
+      }
+    }
+  }
+
+  # system.json style: res$systems[[i]]$url
+  if (!is.null(res$systems)) {
+    systems <- res$systems
+    for (s in systems) {
+      if (!is.null(s$url)) return(s$url)
+    }
+  }
+
+  stop("No GBFS feed URL found in Mobilodrom manifest/system JSON at the provided URL.")
+}
  
 # a function to supply a 2 length logical vector, where the first entry
 # gives whether to save the output, and the second gives whether to output it
