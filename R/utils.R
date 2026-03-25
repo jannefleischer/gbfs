@@ -572,7 +572,16 @@ report_connection_issue <- function(e) {
 
 # Fetch JSON with optional OAuth2 client_credentials support.
 # If `token` is NULL and client credentials are supplied, obtain a token via `get_gbfs_token()`.
-@export
+#'
+#' @param url URL or local path to JSON
+#' @param token Optional bearer token
+#' @param token_url Optional token endpoint for client_credentials
+#' @param client_id Optional OAuth2 client id
+#' @param client_secret Optional OAuth2 client secret
+#' @param scope Optional OAuth2 scope
+#' @param simplifyVector Passed to jsonlite::fromJSON
+#' @return Parsed JSON (list or data.frame depending on simplifyVector)
+#' @export
 gbfs_fetch_json <- function(url, token = NULL, token_url = NULL,
                             client_id = NULL, client_secret = NULL, scope = NULL,
                             simplifyVector = TRUE) {
