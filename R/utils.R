@@ -83,13 +83,13 @@ city_to_url <- function(city_, feed_, token = NULL, token_url = NULL, client_id 
       error = function(e) NULL
     )
 
-    if (!is.null(res) && !is.null(res["data"])) {
+    if (!is.null(res) && !is.null(res[["data"]])) {
       # GBFS v3: data$feeds may be a data.frame or list
       if (!is.null(res$data$feeds)) return(city_)
 
       # GBFS v1/v2: data is a named list with language entries whose
       # first element contains $feeds
-      if (length(res$data) >= 1 && !is.null(res$data[[1]]$feeds)) return(city_)
+      if (length(res$data) >= 1 && is.list(res$data[[1]]) && !is.null(res$data[[1]]$feeds)) return(city_)
 
       # Some implementations return a data.frame directly under data[[1]]
       # with columns name and url
@@ -97,6 +97,11 @@ city_to_url <- function(city_, feed_, token = NULL, token_url = NULL, client_id 
         if (all(c("name", "url") %in% colnames(res$data[[1]]))) return(city_)
       }
     }
+
+    # The URL exists and returned valid JSON but is not a discovery document
+    # (e.g. GBFS v3 individual feed endpoints that have no .json suffix).
+    # Return it as-is — the caller will fetch it directly.
+    if (!is.null(res)) return(city_)
   }
   
   # try to match the string to the system ID
