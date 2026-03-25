@@ -67,7 +67,7 @@ get_which_gbfs_feeds <- function(city, token = NULL, token_url = NULL, client_id
   gbfs <- tryCatch(gbfs_fetch_json(url, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE),
                    error = report_connection_issue)
   
-  # defensive extraction of feeds
+  # defensive extraction of feeds (handle several GBFS shapes)
   if (!is.null(gbfs$data$feeds)) {
     raw_feeds <- gbfs$data$feeds
   } else if (length(gbfs[["data"]]) >= 1) {
@@ -76,22 +76,35 @@ get_which_gbfs_feeds <- function(city, token = NULL, token_url = NULL, client_id
     stop("Unexpected GBFS response structure")
   }
 
+  # unwrap one-level nesting like list(feeds = list(...))
+  if (is.list(raw_feeds) && length(raw_feeds) == 1 &&
+      (is.list(raw_feeds[[1]]) || is.atomic(raw_feeds[[1]]))) {
+    raw_feeds <- raw_feeds[[1]]
+  }
+
   # normalize to tibble with columns 'name' and 'url'
   if (is.data.frame(raw_feeds)) {
     gbfs_feeds <- tibble::as_tibble(raw_feeds)
   } else if (is.character(raw_feeds)) {
     # vector of feed names or URLs
-    # assume names if values look like simple feed ids, otherwise treat as urls
     if (all(grepl("^[a-z0-9_]+$", raw_feeds, ignore.case = TRUE))) {
       gbfs_feeds <- tibble::tibble(name = raw_feeds)
     } else {
       gbfs_feeds <- tibble::tibble(url = raw_feeds)
-      gbfs_feeds <- gbfs_feeds %>% dplyr::mutate(name = basename(url) %>% sub("\\.json$|\\.gbfs$","",.))
+      gbfs_feeds$name <- sub("\\.json$|\\.gbfs$", "", basename(gbfs_feeds$url))
     }
   } else if (is.list(raw_feeds)) {
+    # list of feed objects -> try to extract name and url safely
     gbfs_feeds <- tibble::tibble(
-      name = purrr::map_chr(raw_feeds, "name", .default = NA_character_),
-      url  = purrr::map_chr(raw_feeds, "url",  .default = NA_character_)
+      name = purrr::map_chr(raw_feeds, function(x) {
+        if (is.list(x) && "name" %in% names(x)) return(as.character(x[["name"]]))
+        if (is.atomic(x) && length(x) == 1) return(as.character(x))
+        NA_character_
+      }, .default = NA_character_),
+      url  = purrr::map_chr(raw_feeds, function(x) {
+        if (is.list(x) && "url" %in% names(x)) return(as.character(x[["url"]]))
+        NA_character_
+      }, .default = NA_character_)
     )
   } else {
     stop("Unhandled feeds format from GBFS response")
