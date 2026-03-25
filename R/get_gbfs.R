@@ -224,18 +224,32 @@ get_gbfs <- function(city, feeds = "all", directory = NULL, output = NULL, token
         city_for_feed = feed_urls
       ),
       function(file, feed, city_for_feed) {
-        get_gbfs_dataset_(
-          city = city_for_feed,
-          directory = directory,
-          file = file,
-          output = NULL,
-          feed = feed,
-          token = token,
-          token_url = token_url,
-          client_id = client_id,
-          client_secret = client_secret,
-          scope = scope
-        )
+        if (feed == "geofencing_zones") {
+          get_geofencing_zones_(
+            city = city_for_feed,
+            directory = directory,
+            file = file,
+            output = NULL,
+            token = token,
+            token_url = token_url,
+            client_id = client_id,
+            client_secret = client_secret,
+            scope = scope
+          )
+        } else {
+          get_gbfs_dataset_(
+            city = city_for_feed,
+            directory = directory,
+            file = file,
+            output = NULL,
+            feed = feed,
+            token = token,
+            token_url = token_url,
+            client_id = client_id,
+            client_secret = client_secret,
+            scope = scope
+          )
+        }
       }
     )
   )
