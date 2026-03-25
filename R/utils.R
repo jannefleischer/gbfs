@@ -161,48 +161,26 @@ find_feed_from_top_level <- function(top_level_, feed_, token = NULL, token_url 
     return(top_level_)
   }
   
-  # grab the gbfs.json feed; parse as lists to avoid atomic/vector simplification
-  gbfs <- tryCatch(
-    gbfs_fetch_json(top_level_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = FALSE),
-    error = report_connection_issue
-  )
-
+  # grab the gbfs.json feed
+  gbfs <- tryCatch(gbfs_fetch_json(top_level_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE),
+                   error = report_connection_issue)
+  
   # pull out the names of the supplied sub-feeds
   # GBFS v3: data$feeds directly
   # GBFS v1/v2: data$<language>$feeds (nested by language)
-  if (!is.null(gbfs$data$feeds)) {
+  if (!is.null(gbfs$data$feeds) && is.data.frame(gbfs$data$feeds)) {
     gbfs_feeds <- gbfs$data$feeds
   } else if (length(gbfs[["data"]]) >= 1 && !is.null(gbfs[["data"]][[1]]$feeds)) {
     gbfs_feeds <- gbfs[["data"]][[1]]$feeds
-  } else if (length(gbfs[["data"]]) >= 1 && is.list(gbfs[["data"]][[1]])) {
-    # Some providers return data[[1]] as a list of feed entries (not named 'feeds')
-    gbfs_feeds <- gbfs[["data"]][[1]]
   } else {
     stop(sprintf(c("The supplied \"city\" argument looks like the top-level ",
                    "\"gbfs.json\" URL, but no sub-feeds could be parsed from it. ",
                    "Please check the URL or supply the actual feed URL directly.")))
   }
-
-  # Normalize gbfs_feeds into a data.frame with columns `name` and `url`.
-  if (is.data.frame(gbfs_feeds)) {
-    gbfs_feeds_df <- gbfs_feeds
-  } else if (is.list(gbfs_feeds)) {
-    # list of feed objects -> rbind to data.frame
-    gbfs_feeds_df <- do.call(rbind, lapply(gbfs_feeds, function(x) {
-      data.frame(
-        name = if (!is.null(x$name)) as.character(x$name) else NA_character_,
-        url  = if (!is.null(x$url)) as.character(x$url) else NA_character_,
-        stringsAsFactors = FALSE
-      )
-    }))
-    rownames(gbfs_feeds_df) <- NULL
-  } else {
-    stop(sprintf(c("Could not normalise the feeds list from the top-level GBFS document.")))
-  }
   
   # if the sub-feed is provided by the program, return its URL
-  if (feed_ %in% gbfs_feeds_df$name) {
-    gbfs_feeds_df %>%
+  if (feed_ %in% gbfs_feeds$name) {
+    gbfs_feeds %>%
       dplyr::filter(name == feed_) %>%
       dplyr::select(url) %>%
       dplyr::pull()
