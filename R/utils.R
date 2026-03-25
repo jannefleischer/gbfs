@@ -74,21 +74,29 @@ city_to_url <- function(city_, feed_, token = NULL, token_url = NULL, client_id 
     # the argument might actually be a valid json url without an explicit
     # gbfs .json extension
   } else if (url_exists(city_)) {
-    
-    is_top_level_json <- tryCatch(expr = {
-      
-        # check if the columns in the data match the spec
-        colnames_match <- TRUE %in% (
-          gbfs_fetch_json(city_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE)[["data"]][[1]][[1]] %>%
-          colnames() == c("name", "url"))
-        },
-                                  error = function(e) {FALSE}
-      )
-    
-    if (is_top_level_json) {
-      return(city_)
+    # Try to fetch the URL and detect whether it looks like a GBFS
+    # top-level discovery document (supports v1/v2 nested-by-language
+    # and v3 where data$feeds is present). If so, treat the URL as the
+    # top-level gbfs endpoint and return it directly.
+    res <- tryCatch(
+      gbfs_fetch_json(city_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE),
+      error = function(e) NULL
+    )
+
+    if (!is.null(res) && !is.null(res["data"])) {
+      # GBFS v3: data$feeds may be a data.frame or list
+      if (!is.null(res$data$feeds)) return(city_)
+
+      # GBFS v1/v2: data is a named list with language entries whose
+      # first element contains $feeds
+      if (length(res$data) >= 1 && !is.null(res$data[[1]]$feeds)) return(city_)
+
+      # Some implementations return a data.frame directly under data[[1]]
+      # with columns name and url
+      if (length(res$data) >= 1 && is.data.frame(res$data[[1]])) {
+        if (all(c("name", "url") %in% colnames(res$data[[1]]))) return(city_)
+      }
     }
-    
   }
   
   # try to match the string to the system ID
@@ -564,6 +572,7 @@ report_connection_issue <- function(e) {
 
 # Fetch JSON with optional OAuth2 client_credentials support.
 # If `token` is NULL and client credentials are supplied, obtain a token via `get_gbfs_token()`.
+@export
 gbfs_fetch_json <- function(url, token = NULL, token_url = NULL,
                             client_id = NULL, client_secret = NULL, scope = NULL,
                             simplifyVector = TRUE) {
