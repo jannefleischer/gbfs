@@ -45,12 +45,19 @@ city_to_url <- function(city_, feed_, token = NULL, token_url = NULL, client_id 
   
   # first, check if the city argument is the desired feed. if so, return it!
   if (stringr::str_detect(city_, paste0(feed_, ".json"))) {
-    if (url_exists(city_)) {
+    # try to fetch the URL using gbfs_fetch_json so Authorization headers
+    # (from stored creds) are used when required
+    ok <- tryCatch({
+      gbfs_fetch_json(city_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE)
+      TRUE
+    }, error = function(e) FALSE)
+
+    if (ok) {
       return(city_)
     } else {
       stop(sprintf(c("The supplied argument for \"city\" looks like a URL, ",
-                     "but the webpage doesn't seem to exist. Please check ",
-                     "the URL provided or provide the city name as a string.")))
+                     "but the webpage doesn't seem to exist or is not accessible. ",
+                     "Please check the URL provided or provide the city name as a string.")))
     }
   }
   
@@ -72,7 +79,7 @@ city_to_url <- function(city_, feed_, token = NULL, token_url = NULL, client_id 
       
         # check if the columns in the data match the spec
         colnames_match <- TRUE %in% (
-          jsonlite::fromJSON(city_)[["data"]][[1]][[1]] %>%
+          gbfs_fetch_json(city_, token = token, token_url = token_url, client_id = client_id, client_secret = client_secret, scope = scope, simplifyVector = TRUE)[["data"]][[1]][[1]] %>%
           colnames() == c("name", "url"))
         },
                                   error = function(e) {FALSE}
