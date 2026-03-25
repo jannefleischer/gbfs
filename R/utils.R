@@ -84,12 +84,18 @@ city_to_url <- function(city_, feed_, token = NULL, token_url = NULL, client_id 
     )
 
     if (!is.null(res) && !is.null(res[["data"]])) {
-      # GBFS v3: data$feeds may be a data.frame or list
-      if (!is.null(res$data$feeds)) return(city_)
+      gbfs_ver <- as.character(res$version %||% "")
+      is_v3_resp <- startsWith(gbfs_ver, "3")
 
-      # GBFS v1/v2: data is a named list with language entries whose
-      # first element contains $feeds
-      if (length(res$data) >= 1 && is.list(res$data[[1]]) && !is.null(res$data[[1]]$feeds)) return(city_)
+      # GBFS v3: data$feeds is directly present
+      if (is_v3_resp || (!is.null(res$data$feeds))) return(city_)
+
+      # GBFS v1/v2: data is a named list keyed by language; first entry has $feeds
+      if (!is_v3_resp &&
+          length(res$data) >= 1 &&
+          is.list(res$data) && !is.data.frame(res$data) &&
+          is.list(res$data[[1]]) &&
+          !is.null(res$data[[1]]$feeds)) return(city_)
 
       # Some implementations return a data.frame directly under data[[1]]
       # with columns name and url
@@ -171,11 +177,16 @@ find_feed_from_top_level <- function(top_level_, feed_, token = NULL, token_url 
                    error = report_connection_issue)
   
   # pull out the names of the supplied sub-feeds
-  # GBFS v3: data$feeds directly
+  # GBFS v3: data$feeds directly (or version starts with "3")
   # GBFS v1/v2: data$<language>$feeds (nested by language)
-  if (!is.null(gbfs$data$feeds) && is.data.frame(gbfs$data$feeds)) {
+  gbfs_version <- as.character(gbfs$version %||% "")
+  is_v3 <- startsWith(gbfs_version, "3")
+
+  if (is_v3 || (!is.null(gbfs$data$feeds) && (is.data.frame(gbfs$data$feeds) || is.list(gbfs$data$feeds)))) {
     gbfs_feeds <- gbfs$data$feeds
-  } else if (length(gbfs[["data"]]) >= 1 && !is.null(gbfs[["data"]][[1]]$feeds)) {
+  } else if (length(gbfs[["data"]]) >= 1 &&
+             is.list(gbfs[["data"]][[1]]) &&
+             !is.null(gbfs[["data"]][[1]]$feeds)) {
     gbfs_feeds <- gbfs[["data"]][[1]]$feeds
   } else {
     stop(sprintf(c("The supplied \"city\" argument looks like the top-level ",
