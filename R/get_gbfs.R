@@ -206,19 +206,39 @@ get_gbfs <- function(city, feeds = "all", directory = NULL, output = NULL, token
   # grab all of the relevant feeds! note that this will save each
   # of the datasets in the directory folder if directory is
   # something other than NULL
+  # prefer using the per-feed URL from `available_feeds$url` when present;
+  # otherwise fall back to the top-level `url`.
+  feed_urls <- vapply(relevant_feeds, FUN.VALUE = "", function(nm) {
+    if ("url" %in% names(available_feeds)) {
+      u <- available_feeds$url[available_feeds$name == nm]
+      if (length(u) >= 1 && nzchar(u[1])) return(u[1])
+    }
+    url
+  })
+
   data <- suppressMessages(
-    purrr::map2(paste0(relevant_feeds, ".Rds"),
-                relevant_feeds,
-                get_gbfs_dataset_,
-                city = url,
-                directory = directory,
-                output = NULL,
-                token = token,
-                token_url = token_url,
-                client_id = client_id,
-                client_secret = client_secret,
-                scope = scope)
+    purrr::pmap(
+      list(
+        file = paste0(relevant_feeds, ".Rds"),
+        feed = relevant_feeds,
+        city_for_feed = feed_urls
+      ),
+      function(file, feed, city_for_feed) {
+        get_gbfs_dataset_(
+          city = city_for_feed,
+          directory = directory,
+          file = file,
+          output = NULL,
+          feed = feed,
+          token = token,
+          token_url = token_url,
+          client_id = client_id,
+          client_secret = client_secret,
+          scope = scope
+        )
+      }
     )
+  )
 
   # name each of the elements so that they're more easily accessible
   names(data) <- relevant_feeds
